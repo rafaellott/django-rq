@@ -5,9 +5,33 @@ from django.core.exceptions import ImproperlyConfigured
 
 from .queues import get_unique_connection_configs
 
+from redis import Redis
+from rq import Worker, use_connection
+
+
 SHOW_ADMIN_LINK = getattr(settings, 'RQ_SHOW_ADMIN_LINK', False)
 
-QUEUES = getattr(settings, 'RQ_QUEUES', None)
+REDIS_SERVERS = getattr(settings, 'REDIS_SERVERS', None)
+RQ_QUEUES = {}
+for redis_server in REDIS_SERVERS:
+    redis = Redis(
+        host=redis_server.get('HOST'),
+        port=redis_server.get('PORT'),
+        db=redis_server.get('DB'),
+        password=redis_server.get('PASSWORD'),
+    )
+    use_connection(redis)
+    for worker in Worker.all():
+        for queue in worker.queues:
+            RQ_QUEUES[queue.name] = {
+                'HOST': redis_server.get('HOST'),
+                'PORT': redis_server.get('PORT'),
+                'DB': redis_server.get('DB'),
+                'PASSWORD': redis_server.get('PASSWORD'),
+            }
+
+
+QUEUES = getattr(settings, 'RQ_QUEUES', RQ_QUEUES)
 if QUEUES is None:
     raise ImproperlyConfigured("You have to define RQ_QUEUES in settings.py")
 NAME = getattr(settings, 'RQ_NAME', 'default')
